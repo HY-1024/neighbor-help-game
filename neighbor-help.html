@@ -1,0 +1,2067 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>邻里帮忙 - 暑期寻物</title>
+  <style>
+    :root {
+      --ink: #493321;
+      --muted: #735a45;
+      --paper: rgba(255, 247, 224, 0.94);
+      --soft: rgba(255, 250, 235, 0.72);
+      --line: rgba(96, 63, 34, 0.16);
+      --accent: #d86d2d;
+      --good: #3e8d56;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      color: var(--ink);
+      background: #efc776;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        linear-gradient(90deg, rgba(72, 43, 22, 0.46), rgba(72, 43, 22, 0.05) 55%, rgba(247, 190, 88, 0.16)),
+        url("assets/old-neighborhood-splash.png") center / cover no-repeat;
+      filter: saturate(1.06);
+    }
+
+    button, input { font: inherit; }
+
+    #game3d, #map2d {
+      position: fixed;
+      inset: 0;
+      display: none;
+      overflow: hidden;
+    }
+
+    #game3d.active, #map2d.active { display: block; }
+    #game3d canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+    #map2d {
+      z-index: 1;
+      background: #f0c66d;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #map2d.dragging { cursor: grabbing; }
+
+    #mapStage {
+      position: absolute;
+      transform-origin: center center;
+      will-change: transform;
+      filter: saturate(1.04);
+    }
+
+    #mapStage img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    #mapItemsLayer { position: absolute; inset: 0; }
+
+    .map-item {
+      position: absolute;
+      width: 58px;
+      height: 58px;
+      border: 0;
+      padding: 0;
+      border-radius: 50%;
+      background: transparent;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      filter: drop-shadow(0 8px 8px rgba(64, 42, 24, 0.28));
+      animation: itemBreath 1.8s ease-in-out infinite;
+    }
+
+    .map-item::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 3px;
+      width: 42px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(77, 50, 28, 0.22);
+      transform: translateX(-50%);
+      z-index: -1;
+      filter: blur(2px);
+    }
+
+    .map-item::after {
+      content: "";
+      position: absolute;
+      inset: -7px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 221, 126, 0.75);
+      box-shadow: 0 0 18px rgba(255, 208, 100, 0.52);
+    }
+
+    .map-item.found { display: none; }
+
+    .sprite-icon, .item-icon {
+      background-image: url("assets/item-spritesheet.png");
+      background-size: 400% 200%;
+      background-repeat: no-repeat;
+    }
+
+    .sprite-icon { display: block; width: 100%; height: 100%; }
+
+    @keyframes itemBreath {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 0 -5px; }
+    }
+
+    #ui {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .panel {
+      pointer-events: auto;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 16px 36px rgba(78, 48, 25, 0.18);
+      backdrop-filter: blur(12px);
+    }
+
+    #listPanel {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      width: min(330px, calc(100vw - 36px));
+      padding: 14px;
+    }
+
+    h1 {
+      margin: 0 0 5px;
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .mode-tag {
+      display: inline-flex;
+      min-height: 30px;
+      margin-bottom: 12px;
+      padding: 6px 9px;
+      border-radius: 8px;
+      background: rgba(216, 111, 45, 0.13);
+      color: #8f4b24;
+      border: 1px solid rgba(216, 111, 45, 0.18);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    #items {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 9px;
+      align-items: center;
+      min-height: 54px;
+      padding: 7px;
+      border-radius: 8px;
+      background: var(--soft);
+      border: 1px solid rgba(99, 69, 40, 0.12);
+    }
+
+    .item-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background-color: rgba(255, 255, 255, 0.42);
+      border: 1px solid rgba(99, 69, 40, 0.1);
+    }
+
+    .item strong { display: block; margin-bottom: 3px; font-size: 14px; line-height: 1.2; }
+    .item span { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+    .item span.clue { color: #9a6336; font-weight: 700; }
+    .item span.detail { color: #b45132; font-weight: 800; }
+    .item.done { opacity: 0.58; background: rgba(225, 246, 215, 0.72); }
+    .item.done strong { text-decoration: line-through; }
+
+    #hud {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(74px, 1fr));
+      gap: 8px;
+      min-width: 292px;
+      padding: 9px;
+    }
+
+    .stat {
+      padding: 9px 8px;
+      border-radius: 8px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(99, 69, 40, 0.1);
+    }
+
+    .stat span { display: block; margin-bottom: 3px; color: var(--muted); font-size: 12px; line-height: 1.1; }
+    .stat strong { display: block; color: #4b3526; font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; }
+
+    #tools {
+      position: absolute;
+      right: 18px;
+      top: 120px;
+      width: 178px;
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .tool-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tool-btn, #resetView, #exitGame {
+      min-height: 36px;
+      border: 1px solid rgba(99, 65, 35, 0.18);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.68);
+      color: var(--ink);
+      padding: 6px 9px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    #exitGame {
+      background: rgba(86, 53, 31, 0.88);
+      color: #fff7df;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    .tool-btn.on {
+      background: var(--accent);
+      color: #fffaf0;
+      border-color: transparent;
+    }
+
+    .volume-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    #miniMap {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      width: 210px;
+      height: 118px;
+      overflow: hidden;
+      display: none;
+      background: rgba(255, 247, 224, 0.64);
+    }
+
+    #miniMap.active { display: block; }
+    #miniMap img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.7; }
+    .mini-dot {
+      position: absolute;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #e0562f;
+      border: 2px solid #fff7dc;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 8px rgba(120, 54, 20, 0.4);
+    }
+    .mini-dot.found { background: var(--good); opacity: 0.5; }
+
+    #tip {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      max-width: min(650px, calc(100vw - 36px));
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: rgba(75, 48, 30, 0.82);
+      color: #fff8e8;
+      font-size: 14px;
+      line-height: 1.35;
+      text-align: center;
+      pointer-events: none;
+      box-shadow: 0 10px 24px rgba(78, 48, 25, 0.18);
+    }
+
+    .floatText {
+      position: fixed;
+      z-index: 8;
+      pointer-events: none;
+      color: #fff6df;
+      font-size: 20px;
+      font-weight: 900;
+      text-shadow: 0 2px 0 rgba(94, 52, 24, 0.46), 0 5px 12px rgba(58, 36, 22, 0.28);
+      animation: floatUp 900ms ease-out forwards;
+    }
+    .floatText.miss { color: #ffe1d8; }
+    @keyframes floatUp {
+      from { transform: translate(-50%, 0); opacity: 1; }
+      to { transform: translate(-50%, -54px); opacity: 0; }
+    }
+
+    #startScreen {
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      display: grid;
+      align-items: center;
+      padding: clamp(24px, 5vw, 64px);
+      background:
+        linear-gradient(90deg, rgba(56, 34, 19, 0.5), rgba(56, 34, 19, 0.12) 52%, rgba(255, 198, 93, 0.18)),
+        url("assets/old-neighborhood-splash.png") center / cover no-repeat;
+    }
+
+    #startScreen.hidden { display: none; }
+
+    .start-card {
+      width: min(500px, calc(100vw - 36px));
+      padding: 24px;
+      border-radius: 8px;
+      background: rgba(255, 247, 224, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: 0 24px 70px rgba(55, 34, 19, 0.38);
+      backdrop-filter: blur(14px);
+    }
+
+    .start-kicker {
+      display: inline-flex;
+      margin-bottom: 10px;
+      padding: 5px 8px;
+      border-radius: 8px;
+      background: rgba(216, 111, 45, 0.14);
+      color: #8b4a26;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .start-card h2 { margin: 0 0 8px; font-size: clamp(38px, 6vw, 58px); line-height: 1; letter-spacing: 0; }
+    .start-card p { margin: 0 0 18px; color: #684d39; font-size: 15px; line-height: 1.55; }
+
+    .level-grid, .scene-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-bottom: 12px;
+    }
+    .scene-grid { grid-template-columns: repeat(2, 1fr); }
+
+    .choice-btn {
+      min-height: 46px;
+      border: 1px solid rgba(99, 65, 35, 0.18);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.62);
+      color: var(--ink);
+      padding: 6px 8px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .choice-btn span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .choice-btn.active { background: var(--accent); color: #fffaf0; border-color: transparent; box-shadow: inset 0 -2px 0 rgba(92, 45, 20, 0.24); }
+    .choice-btn.active span { color: rgba(255, 250, 240, 0.82); }
+
+    #startGame, #restart, #backToMenu {
+      width: 100%;
+      min-height: 46px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fffaf0;
+      font-size: 16px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #9f451e;
+    }
+
+    #backToMenu {
+      background: rgba(86, 53, 31, 0.88);
+      box-shadow: 0 4px 0 rgba(48, 29, 18, 0.88);
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(55, 35, 22, 0.48);
+    }
+    #overlay.show { display: grid; }
+    .result {
+      width: min(430px, calc(100vw - 40px));
+      padding: 24px;
+      text-align: center;
+      background:
+        linear-gradient(rgba(255, 246, 222, 0.92), rgba(255, 246, 222, 0.92)),
+        url("assets/old-neighborhood-splash.png") center / cover no-repeat;
+    }
+    .result h2 { margin: 0 0 10px; font-size: 31px; line-height: 1.08; }
+    .result p { margin: 0 0 18px; color: #654b38; font-size: 15px; line-height: 1.5; }
+    .result-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 0 0 16px;
+    }
+    .result-stats span {
+      min-height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(99, 69, 40, 0.12);
+      color: #5e4430;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.25;
+    }
+    .result-stats strong {
+      display: block;
+      color: #3f2b1e;
+      font-size: 20px;
+      line-height: 1.15;
+    }
+    .result-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    #overlay.lose .result {
+      background:
+        linear-gradient(rgba(255, 238, 222, 0.94), rgba(255, 246, 222, 0.9)),
+        url("assets/old-neighborhood-splash.png") center / cover no-repeat;
+    }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(rgba(239, 201, 127, 0.62), rgba(239, 201, 127, 0.78)),
+        url("assets/old-neighborhood-splash.png") center / cover no-repeat;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    @media (max-width: 780px) {
+      #listPanel { top: auto; bottom: 14px; left: 14px; width: calc(100vw - 28px); padding: 11px; }
+      h1 { font-size: 20px; }
+      .subtitle { display: none; }
+      #items { grid-template-columns: 1fr 1fr; gap: 6px; }
+      .item { grid-template-columns: 34px 1fr; min-height: 46px; padding: 6px; }
+      .item-icon { width: 31px; height: 31px; }
+      .item strong { font-size: 12px; }
+      .item span { font-size: 10px; }
+      #hud { right: 14px; top: 14px; min-width: 236px; }
+      .stat strong { font-size: 19px; }
+      #tools { top: 98px; right: 14px; width: 160px; }
+      #miniMap, #tip { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="game3d"></div>
+  <div id="map2d" aria-label="二维小区艺术地图">
+    <div id="mapStage">
+      <img src="assets/old-neighborhood-splash.png" alt="" draggable="false" />
+      <div id="mapItemsLayer"></div>
+    </div>
+  </div>
+  <div id="loading">正在布置 5 号楼的小区早晨...</div>
+
+  <section id="startScreen" aria-label="游戏启动页">
+    <div class="start-card">
+      <div class="start-kicker">老旧小区寻物游戏</div>
+      <h2>邻里帮忙</h2>
+      <p>选择二维艺术地图或三维建模场景，再按难度进入小区，帮邻居们找回丢失的小物件。</p>
+      <div class="scene-grid" aria-label="选择场景">
+        <button class="choice-btn active" data-view="2d" type="button">二维进入<span>艺术地图玩法</span></button>
+        <button class="choice-btn" data-view="3d" type="button">三维进入<span>可旋转缩放建模</span></button>
+      </div>
+      <div class="level-grid" aria-label="选择难度">
+        <button class="choice-btn" data-level="easy" type="button">简单<span>3 件 · 120 秒</span></button>
+        <button class="choice-btn active" data-level="normal" type="button">中等<span>5 件 · 90 秒</span></button>
+        <button class="choice-btn" data-level="hard" type="button">困难<span>8 件 · 60 秒</span></button>
+      </div>
+      <button id="startGame" type="button">开始寻物</button>
+    </div>
+  </section>
+
+  <div id="ui">
+    <section id="listPanel" class="panel" aria-label="待寻物清单">
+      <h1>邻里帮忙</h1>
+      <p class="subtitle">暑假早晨，帮 5 号楼的邻居找回丢失的小物件。</p>
+      <div id="currentMode" class="mode-tag">二维 · 中等 · 5 件 · 90 秒</div>
+      <ul id="items"></ul>
+    </section>
+
+    <section id="hud" class="panel" aria-label="游戏状态">
+      <div class="stat"><span>倒计时</span><strong id="time">90</strong></div>
+      <div class="stat"><span>得分</span><strong id="score">0</strong></div>
+      <div class="stat"><span>进度</span><strong id="progress">0/5</strong></div>
+    </section>
+
+    <div id="tools" class="panel" aria-label="声音控制">
+      <div class="tool-row">
+        <button id="soundToggle" class="tool-btn on" type="button" aria-pressed="true">音效开</button>
+        <span id="sfxValue" class="volume-label">70%</span>
+      </div>
+      <input id="sfxVolume" type="range" min="0" max="100" value="70" aria-label="音效音量" />
+      <div class="tool-row">
+        <button id="bgmToggle" class="tool-btn" type="button" aria-pressed="false">BGM关</button>
+        <span id="bgmValue" class="volume-label">45%</span>
+      </div>
+      <input id="bgmVolume" type="range" min="0" max="100" value="45" aria-label="BGM音量" />
+      <button id="resetView" type="button">重置视图</button>
+      <button id="exitGame" type="button">退出游戏</button>
+    </div>
+
+    <div id="miniMap" class="panel" aria-label="三维小地图">
+      <img src="assets/old-neighborhood-splash.png" alt="" />
+      <div id="miniDots"></div>
+    </div>
+
+    <div id="tip">点击看得见的真实物件来拾取。三维模式可拖拽旋转、滚轮缩放。</div>
+  </div>
+
+  <div id="overlay" aria-live="polite">
+    <div class="result panel">
+      <h2 id="resultTitle">社区小帮手</h2>
+      <p id="resultText">你帮大家找齐了东西。</p>
+      <div id="resultStats" class="result-stats" aria-label="本局统计"></div>
+      <div class="result-actions">
+        <button id="restart" type="button">再玩一次</button>
+        <button id="backToMenu" type="button">返回首页</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const game3d = document.getElementById("game3d");
+    const map2d = document.getElementById("map2d");
+    const mapStage = document.getElementById("mapStage");
+    const mapItemsLayer = document.getElementById("mapItemsLayer");
+    const loading = document.getElementById("loading");
+    const startScreen = document.getElementById("startScreen");
+    const startGameButton = document.getElementById("startGame");
+    const list = document.getElementById("items");
+    const timeEl = document.getElementById("time");
+    const scoreEl = document.getElementById("score");
+    const progressEl = document.getElementById("progress");
+    const currentModeEl = document.getElementById("currentMode");
+    const tipEl = document.getElementById("tip");
+    const overlay = document.getElementById("overlay");
+    const resultTitle = document.getElementById("resultTitle");
+    const resultText = document.getElementById("resultText");
+    const resultStats = document.getElementById("resultStats");
+    const restart = document.getElementById("restart");
+    const backToMenuButton = document.getElementById("backToMenu");
+    const soundToggle = document.getElementById("soundToggle");
+    const bgmToggle = document.getElementById("bgmToggle");
+    const sfxVolume = document.getElementById("sfxVolume");
+    const bgmVolume = document.getElementById("bgmVolume");
+    const sfxValue = document.getElementById("sfxValue");
+    const bgmValue = document.getElementById("bgmValue");
+    const resetViewButton = document.getElementById("resetView");
+    const exitGameButton = document.getElementById("exitGame");
+    const miniMap = document.getElementById("miniMap");
+    const miniDots = document.getElementById("miniDots");
+    const viewButtons = [...document.querySelectorAll("[data-view]")];
+    const levelButtons = [...document.querySelectorAll("[data-level]")];
+    const quickParams = new URLSearchParams(window.location.search);
+
+    const difficulty = {
+      easy: { label: "简单", count: 3, time: 120 },
+      normal: { label: "中等", count: 5, time: 90 },
+      hard: { label: "困难", count: 8, time: 60 }
+    };
+
+    const baseItems = [
+      { id: "keys", name: "钥匙", vague: "金属小物，常会掉在矮处", detail: "在花坛边的泥土旁", cell: [0, 0], map: [30.2, 72.2], pos: [-5.95, 0.78, 1.15], mini: [31, 69], scale: 0.72 },
+      { id: "ball", name: "篮球", vague: "橙色圆物，可能滚进角落", detail: "在自行车棚靠里的地面", cell: [1, 0], map: [30.8, 47.8], pos: [6.35, 0.66, 3.05], mini: [24, 47], scale: 0.82 },
+      { id: "glasses", name: "老花镜", vague: "透明小物，常放在休息处", detail: "在石桌棋盘旁边", cell: [2, 0], map: [39.0, 78.7], pos: [0.62, 1.2, 2.34], mini: [39, 76], scale: 0.62 },
+      { id: "card", name: "学生卡", vague: "蓝色挂绳，容易挂在杆子上", detail: "在健身器材扶手附近", cell: [3, 0], map: [64.5, 75.4], pos: [-4.35, 1.85, 5.08], mini: [65, 75], scale: 0.62 },
+      { id: "buns", name: "一袋馒头", vague: "白色袋子，像刚买回来的早点", detail: "在居民楼门口台阶上", cell: [0, 1], map: [47.5, 48.0], pos: [-1.05, 0.82, -2.75], mini: [48, 49], scale: 0.78 }
+    ];
+
+    const hardStoryItems = [
+      { id: "umbrella", name: "王奶奶的红伞", vague: "细长红色物，常靠在柱子旁", detail: "在右侧老式路灯脚边", cell: [1, 1], map: [85.0, 66.0], pos: [5.4, 0.7, -1.5], mini: [84, 66], scale: 0.74 },
+      { id: "toycar", name: "豆豆的玩具车", vague: "绿色小玩具，藏在低矮地方", detail: "在长椅前面的水泥地上", cell: [2, 1], map: [66.3, 86.6], pos: [2.5, 0.65, 4.15], mini: [66, 85], scale: 0.68 },
+      { id: "paper", name: "张大爷的报纸卷", vague: "浅色卷状物，像被顺手放下", detail: "在楼门右侧公告栏附近", cell: [3, 1], map: [50.7, 49.5], pos: [2.95, 0.76, -2.82], mini: [51, 50], scale: 0.7 }
+    ];
+
+    let scene, camera, renderer, controls, raycaster, pointer, itemSheet;
+    let pickupGroup = new THREE.Group();
+    let clickableObjects = [];
+    let activeItems = [];
+    let activeLevel = "normal";
+    let activeView = "2d";
+    let running = false;
+    let gameStarted = false;
+    let score = 0;
+    let timeLeft = 90;
+    let lastSecond = performance.now();
+    let missStreak = 0;
+    let hintLevel = 0;
+    let pointerDown = null;
+    let mapZoom = 1;
+    let mapPanX = 0;
+    let mapPanY = 0;
+    let mapDrag = null;
+    let soundEnabled = true;
+    let bgmEnabled = false;
+    let sfxGainValue = 0.7;
+    let bgmGainValue = 0.45;
+    let audioCtx;
+    let bgmAudio;
+    let ambientTimer;
+    let ambientGain;
+    let bgmRequestId = 0;
+
+    init();
+    animate();
+
+    function init() {
+      setup3d();
+      bindEvents();
+      loadAssets();
+      resize();
+    }
+
+    function setup3d() {
+      scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0xefc97f, 58, 150);
+      camera = new THREE.OrthographicCamera(-10, 10, 7, -7, 0.1, 240);
+      camera.position.set(-11.5, 12.2, 14.4);
+      camera.lookAt(0, 1.2, 0);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setClearColor(0x000000, 0);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      game3d.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(-0.4, 1.2, 0.25);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minZoom = 0.52;
+      controls.maxZoom = 2.7;
+      controls.minPolarAngle = Math.PI * 0.19;
+      controls.maxPolarAngle = Math.PI * 0.49;
+      controls.rotateSpeed = 0.58;
+      controls.zoomSpeed = 0.76;
+
+      raycaster = new THREE.Raycaster();
+      pointer = new THREE.Vector2();
+      scene.add(pickupGroup);
+      addLights();
+      buildScene();
+    }
+
+    function bindEvents() {
+      window.addEventListener("resize", resize);
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      renderer.domElement.addEventListener("pointerup", onPointerUp);
+      renderer.domElement.addEventListener("pointermove", onPointerMove);
+      map2d.addEventListener("wheel", onMapWheel, { passive: false });
+      map2d.addEventListener("pointerdown", onMapPointerDown);
+      window.addEventListener("pointermove", onMapPointerMove);
+      window.addEventListener("pointerup", onMapPointerUp);
+
+      startGameButton.addEventListener("click", startGame);
+      restart.addEventListener("click", resetGame);
+      backToMenuButton.addEventListener("click", exitGame);
+      resetViewButton.addEventListener("click", resetView);
+      exitGameButton.addEventListener("click", exitGame);
+
+      viewButtons.forEach((button) => {
+        button.addEventListener("click", () => selectView(button.dataset.view));
+      });
+      levelButtons.forEach((button) => {
+        button.addEventListener("click", () => selectLevel(button.dataset.level));
+      });
+
+      soundToggle.addEventListener("click", () => {
+        soundEnabled = !soundEnabled;
+        syncAudioUi();
+        if (soundEnabled) beep(520, 0.06, "sine");
+      });
+
+      bgmToggle.addEventListener("click", () => {
+        if (bgmEnabled) {
+          bgmEnabled = false;
+          stopBgm();
+          syncAudioUi();
+          return;
+        }
+        bgmEnabled = true;
+        const requestId = ++bgmRequestId;
+        syncAudioUi();
+        startBgm(requestId);
+      });
+
+      sfxVolume.addEventListener("input", () => {
+        sfxGainValue = Number(sfxVolume.value) / 100;
+        syncAudioUi();
+      });
+
+      bgmVolume.addEventListener("input", () => {
+        bgmGainValue = Number(bgmVolume.value) / 100;
+        applyBgmVolume();
+        syncAudioUi();
+      });
+    }
+
+    function loadAssets() {
+      new THREE.TextureLoader().load("assets/item-spritesheet.png", (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        itemSheet = texture;
+        buildPickups();
+        prepareRound(false);
+        if (quickParams.get("start")) {
+          selectView(quickParams.get("view") === "3d" ? "3d" : "2d");
+          if (difficulty[quickParams.get("level")]) selectLevel(quickParams.get("level"));
+          requestAnimationFrame(startGame);
+        }
+        loading.style.display = "none";
+      }, undefined, () => {
+        loading.textContent = "道具贴图加载失败，请检查 assets/item-spritesheet.png";
+      });
+    }
+
+    function addLights() {
+      const sun = new THREE.DirectionalLight(0xffdf9b, 3.6);
+      sun.position.set(8, 16, 10);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -22;
+      sun.shadow.camera.right = 22;
+      sun.shadow.camera.top = 22;
+      sun.shadow.camera.bottom = -22;
+      scene.add(sun);
+      scene.add(new THREE.HemisphereLight(0xffefd1, 0x798766, 2.2));
+      const glow = new THREE.PointLight(0xffb260, 0.8, 18);
+      glow.position.set(4, 4, 1);
+      scene.add(glow);
+    }
+
+    function mat(color, roughness = 0.82, metalness = 0.02) {
+      return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+    }
+
+    function textureMat(color, kind) {
+      const texture = makeSurfaceTexture(kind);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(kind === "brick" ? 2.6 : 4, kind === "brick" ? 2 : 4);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.MeshStandardMaterial({ color, map: texture, roughness: 0.88, metalness: 0.01 });
+    }
+
+    function makeSurfaceTexture(kind) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      if (kind === "brick") {
+        ctx.fillStyle = "#a34d38";
+        ctx.fillRect(0, 0, 256, 256);
+        for (let y = 0; y < 256; y += 28) {
+          const offset = (y / 28) % 2 ? 32 : 0;
+          for (let x = -offset; x < 256; x += 64) {
+            ctx.fillStyle = "rgba(255,165,125,0.12)";
+            ctx.fillRect(x + 2, y + 2, 60, 24);
+            ctx.strokeStyle = "rgba(70,35,24,0.34)";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, 64, 28);
+          }
+        }
+      } else {
+        ctx.fillStyle = "#cbbb94";
+        ctx.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 800; i++) {
+          const shade = 135 + Math.random() * 65;
+          ctx.fillStyle = `rgba(${shade},${shade * 0.92},${shade * 0.7},0.08)`;
+          ctx.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1 + Math.random() * 3);
+        }
+      }
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function box(w, h, d, material, x, y, z, parent = scene) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function cyl(rt, rb, h, material, x, y, z, seg = 24, parent = scene) {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function rodBetween(a, b, radius, material, parent = scene) {
+      const dir = new THREE.Vector3().subVectors(b, a);
+      const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, dir.length(), 14), material);
+      mesh.position.copy(mid);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function buildScene() {
+      const concrete = textureMat(0xcbb990, "concrete");
+      const brick = textureMat(0xa84f38, "brick");
+      const brickDark = textureMat(0x8e3f2d, "brick");
+      const roof = mat(0x934530);
+      const windowMat = mat(0xcfe6d9, 0.38, 0.06);
+      const dark = mat(0x574033);
+      const leaf = mat(0x4e7f45);
+      const vine = mat(0x3f713d);
+      const metal = mat(0x66706a, 0.55, 0.14);
+      const red = mat(0xc95e3d);
+      const blue = mat(0x4e83a6);
+      const yellow = mat(0xd69a32);
+
+      buildRoadExtension(concrete, brick, leaf);
+      box(19.2, 0.38, 14.2, concrete, 0, -0.19, 0);
+      box(19.4, 0.42, 0.36, mat(0xa9956e), 0, -0.42, 7.28);
+      box(0.36, 0.42, 14.4, mat(0xa9956e), 9.78, -0.42, 0);
+      box(18.8, 0.07, 0.07, mat(0x8f7d5a), 0, 0.04, 6.74);
+      box(0.07, 0.07, 13.6, mat(0x8f7d5a), 9.2, 0.04, 0);
+      addPavementLines();
+      buildBuilding(brick, brickDark, roof, windowMat, dark, vine, red, blue, yellow);
+      buildFlowerBed(leaf);
+      buildBikeShed(metal, blue);
+      buildStoneTable();
+      buildOutdoorGym(metal, red, yellow);
+      buildBench();
+      buildNoticeBoard();
+      buildLamp(5.7, -1.8);
+      buildLamp(-8.1, 3.9);
+      buildBikes();
+      addGroundDetails();
+    }
+
+    function buildRoadExtension(concrete, brick, leaf) {
+      box(82, 0.18, 62, mat(0xd8b875), 0, -0.64, 0);
+      box(70, 0.08, 4.3, mat(0xaa9674), 0, -0.48, 10.7);
+      box(4.4, 0.08, 52, mat(0xaa9674), 13.9, -0.47, -1.2);
+      box(70, 0.08, 3.2, mat(0x9f8b6d), 0, -0.49, -12.6);
+      box(3.4, 0.08, 50, mat(0x9f8b6d), -15.1, -0.49, 0.5);
+      box(24, 0.11, 2.1, concrete, -3.6, -0.43, -8.3);
+      box(2.1, 0.11, 16, concrete, -10.7, -0.43, -0.55);
+      box(25, 0.3, 0.38, brick, -1.0, 0.0, 8.0);
+      box(0.38, 0.3, 15.2, brick, -10.0, 0.0, -0.2);
+      buildOuterStreet(concrete, brick, leaf);
+      addRoadMarkings();
+      [-18, -14.2, -12.5, -9, 10.8, 13.0, 17.2, 20.2].forEach((x, i) => addTree(x, i % 2 ? 7.0 : -7.8, 0.92 + (i % 3) * 0.12, leaf));
+      [-13.6, -5.6, 2.8, 10.8, 18.4].forEach((x, i) => addStreetLamp(x, 12.95, i % 2 ? -0.25 : 0.2));
+      [-12.6, -4.2, 4.6, 13.4].forEach((x, i) => buildStreetBlock(x, 15.0, 3.8 + (i % 2) * 0.6, 2.7, 2 + (i % 2), i % 2 ? 0x5fa9b6 : 0xd28a36, 0));
+      buildStreetBlock(-18.3, 3.2, 3.2, 3.8, 3, 0x6ab56d, Math.PI / 2);
+      buildStreetBlock(-18.3, -5.6, 3.0, 3.6, 2, 0xc66d63, Math.PI / 2);
+      buildStreetBlock(18.2, 1.0, 3.2, 4.0, 3, 0x6aa6c8, -Math.PI / 2);
+      buildStreetBlock(18.2, -7.6, 3.5, 3.4, 2, 0xd8944a, -Math.PI / 2);
+      buildFarLowBlock(-12.8, -9.6, 3.8, 3.0, 0.18);
+      buildFarLowBlock(13.0, -9.8, 3.3, 4.0, -0.18);
+      [-29.0, -20.5, -12.0, -3.5, 5.0, 13.5, 22.0, 30.5].forEach((x, i) => {
+        buildStreetBlock(x, 25.2, 3.6 + (i % 3) * 0.35, 3.0, 2 + (i % 2), i % 2 ? 0x7aa987 : 0xcf8b47, 0);
+        buildFarLowBlock(x + 1.2, -25.4, 3.2 + (i % 2) * 0.5, 2.8, i % 2 ? 0.12 : -0.12);
+      });
+      [-26.5, -15.5, -4.5, 6.5, 17.5, 28.5].forEach((z, i) => {
+        buildStreetBlock(-34.4, z, 3.0, 3.6 + (i % 2) * 0.35, 2 + (i % 2), i % 2 ? 0x6aa6c8 : 0xd28a36, Math.PI / 2);
+        buildStreetBlock(34.4, z + 1.0, 3.0, 3.6 + (i % 2) * 0.35, 2 + ((i + 1) % 2), i % 2 ? 0xc66d63 : 0x6ab56d, -Math.PI / 2);
+      });
+    }
+
+    function buildOuterStreet(concrete, brick, leaf) {
+      const road = mat(0x756f61);
+      const curb = mat(0xe7d2a4);
+      const lane = mat(0xf4e8ca);
+      const yellow = mat(0xd8b65b);
+      box(52, 0.11, 3.8, road, 0, -0.4, 17.05);
+      box(52, 0.11, 3.6, road, 0, -0.41, -17.0);
+      box(3.7, 0.11, 38, road, 24.0, -0.4, 0);
+      box(3.5, 0.11, 38, road, -24.0, -0.41, 0);
+      box(50, 0.08, 1.0, concrete, 0, -0.33, 14.55);
+      box(50, 0.08, 1.0, concrete, 0, -0.33, -14.55);
+      box(1.0, 0.08, 36, concrete, 21.55, -0.33, 0);
+      box(1.0, 0.08, 36, concrete, -21.55, -0.33, 0);
+      box(49, 0.32, 0.18, brick, 0, -0.12, 13.86);
+      box(49, 0.32, 0.18, brick, 0, -0.12, -13.86);
+      box(0.18, 0.32, 35, brick, 20.88, -0.12, 0);
+      box(0.18, 0.32, 35, brick, -20.88, -0.12, 0);
+
+      for (let x = -22; x <= 22; x += 3.2) {
+        box(1.25, 0.018, 0.07, lane, x, -0.33, 17.05);
+        box(1.25, 0.018, 0.07, lane, x, -0.33, -17.0);
+      }
+      for (let z = -16; z <= 16; z += 3.0) {
+        box(0.07, 0.018, 1.22, lane, 24.0, -0.32, z);
+        box(0.07, 0.018, 1.22, lane, -24.0, -0.32, z);
+      }
+      [[-17.8, 14.55, true], [16.4, 14.55, true], [-17.8, -14.55, true], [16.4, -14.55, true]].forEach(([x, z]) => {
+        for (let i = 0; i < 6; i++) box(0.18, 0.02, 1.25, curb, x + i * 0.45, -0.26, z);
+      });
+      [[21.55, -9.2], [21.55, 7.8], [-21.55, -9.2], [-21.55, 7.8]].forEach(([x, z]) => {
+        for (let i = 0; i < 6; i++) box(1.25, 0.02, 0.18, curb, x, -0.26, z + i * 0.45);
+      });
+      box(45, 0.02, 0.05, yellow, 0, -0.31, 17.05);
+      box(45, 0.02, 0.05, yellow, 0, -0.31, -17.0);
+      box(0.05, 0.02, 34, yellow, 24.0, -0.31, 0);
+      box(0.05, 0.02, 34, yellow, -24.0, -0.31, 0);
+
+      box(76, 0.1, 4.2, road, 0, -0.43, 27.2);
+      box(76, 0.1, 4.2, road, 0, -0.44, -27.2);
+      box(4.2, 0.1, 56, road, 36.0, -0.43, 0);
+      box(4.2, 0.1, 56, road, -36.0, -0.44, 0);
+      box(72, 0.07, 1.2, concrete, 0, -0.35, 23.9);
+      box(72, 0.07, 1.2, concrete, 0, -0.35, -23.9);
+      box(1.2, 0.07, 54, concrete, 32.8, -0.35, 0);
+      box(1.2, 0.07, 54, concrete, -32.8, -0.35, 0);
+      box(72, 0.25, 0.16, brick, 0, -0.13, 23.1);
+      box(72, 0.25, 0.16, brick, 0, -0.13, -23.1);
+      box(0.16, 0.25, 54, brick, 32.0, -0.13, 0);
+      box(0.16, 0.25, 54, brick, -32.0, -0.13, 0);
+      for (let x = -34; x <= 34; x += 3.4) {
+        box(1.3, 0.018, 0.07, lane, x, -0.33, 27.2);
+        box(1.3, 0.018, 0.07, lane, x, -0.33, -27.2);
+      }
+      for (let z = -26; z <= 26; z += 3.3) {
+        box(0.07, 0.018, 1.3, lane, 36.0, -0.33, z);
+        box(0.07, 0.018, 1.3, lane, -36.0, -0.33, z);
+      }
+      box(68, 0.02, 0.05, yellow, 0, -0.31, 27.2);
+      box(68, 0.02, 0.05, yellow, 0, -0.31, -27.2);
+      box(0.05, 0.02, 52, yellow, 36.0, -0.31, 0);
+      box(0.05, 0.02, 52, yellow, -36.0, -0.31, 0);
+
+      [-20, -15, -10, -5, 0, 5, 10, 15, 20].forEach((x, i) => {
+        addTree(x, 13.15, 0.72 + (i % 2) * 0.08, leaf);
+        addTree(x, -13.15, 0.7 + (i % 3) * 0.07, leaf);
+      });
+      [-11, -3, 5, 13, 21].forEach((z, i) => {
+        addTree(20.0, z, 0.72 + (i % 2) * 0.08, leaf);
+        addTree(-20.0, z, 0.72 + (i % 2) * 0.08, leaf);
+      });
+      [-20, -10, 0, 10, 20].forEach((x, i) => {
+        addStreetLamp(x, 15.25, i % 2 ? 0.12 : -0.12);
+        addStreetLamp(x, -15.25, i % 2 ? -0.12 : 0.12);
+      });
+      [-32, -24, -16, -8, 0, 8, 16, 24, 32].forEach((x, i) => {
+        addTree(x, 22.6, 0.64 + (i % 3) * 0.05, leaf);
+        addTree(x, -22.6, 0.64 + (i % 2) * 0.05, leaf);
+      });
+      [-24, -16, -8, 0, 8, 16, 24].forEach((z, i) => {
+        addTree(31.3, z, 0.64 + (i % 2) * 0.06, leaf);
+        addTree(-31.3, z, 0.64 + (i % 3) * 0.05, leaf);
+      });
+      [-30, -18, -6, 6, 18, 30].forEach((x, i) => {
+        addStreetLamp(x, 25.45, i % 2 ? 0.1 : -0.1);
+        addStreetLamp(x, -25.45, i % 2 ? -0.1 : 0.1);
+      });
+    }
+
+    function addRoadMarkings() {
+      const white = mat(0xf2eadc);
+      for (let x = -18; x <= 18; x += 2.4) box(1.1, 0.018, 0.08, white, x, -0.43, 10.7);
+      for (let z = -14; z <= 14; z += 2.4) box(0.08, 0.018, 1.1, white, 13.9, -0.42, z);
+      for (let i = 0; i < 6; i++) {
+        box(0.16, 0.02, 1.25, white, -6.8 + i * 0.45, -0.41, 10.72);
+        box(1.25, 0.02, 0.16, white, 13.9, -0.4, -5.8 + i * 0.45);
+      }
+      box(15.5, 0.018, 0.04, mat(0xd8b65b), 0, -0.4, 10.7);
+    }
+
+    function addStreetLamp(x, z, lean = 0) {
+      const metal = mat(0x565d5b, 0.56, 0.14);
+      const lamp = mat(0xffcf6d);
+      cyl(0.055, 0.07, 2.35, metal, x, 0.82, z, 14);
+      const arm = rodBetween(new THREE.Vector3(x, 1.96, z), new THREE.Vector3(x + 0.58, 2.08 + lean, z), 0.025, metal);
+      cyl(0.16, 0.23, 0.25, lamp, x + 0.7, 1.88 + lean, z, 18);
+    }
+
+    function buildStreetBlock(x, z, w, d, floors, accent, rot = 0) {
+      const group = new THREE.Group();
+      group.position.set(x, -0.36, z);
+      group.rotation.y = rot;
+      scene.add(group);
+      const wall = mat(0xd8c8ad);
+      const trim = mat(accent);
+      const roof = mat(0x8b5a42);
+      const glass = mat(0x8bd5df, 0.38, 0.08);
+      box(w, floors * 1.05, d, wall, 0, floors * 0.525, 0, group);
+      box(w + 0.25, 0.16, d + 0.25, trim, 0, floors * 1.05 + 0.12, 0, group);
+      box(w + 0.05, 0.08, d + 0.05, roof, 0, floors * 1.05 + 0.28, 0, group);
+      box(w * 0.75, 0.1, 0.18, trim, 0, 0.82, d / 2 + 0.08, group);
+      box(w * 0.34, 0.62, 0.08, mat(0xb7a691), -w * 0.25, 0.34, d / 2 + 0.08, group);
+      box(w * 0.28, 0.68, 0.08, glass, w * 0.22, 0.38, d / 2 + 0.09, group);
+      for (let floor = 1; floor < floors; floor++) {
+        const y = floor * 1.05 + 0.36;
+        for (let col = 0; col < 2; col++) {
+          const wx = -w * 0.25 + col * w * 0.5;
+          box(0.54, 0.48, 0.08, glass, wx, y, d / 2 + 0.08, group);
+          box(0.64, 0.06, 0.12, trim, wx, y - 0.3, d / 2 + 0.11, group);
+        }
+      }
+      box(w * 0.5, 0.08, 0.28, mat(0xe7e0ca), -w * 0.15, floors * 1.05 + 0.45, 0, group);
+      cyl(0.16, 0.16, 0.28, mat(0xb7b0a0), w * 0.33, floors * 1.05 + 0.5, -d * 0.18, 18, group);
+
+      for (let floor = 1; floor < floors; floor++) {
+        const y = floor * 1.05 + 0.36;
+        [-w * 0.24, w * 0.24].forEach((wx) => {
+          box(0.5, 0.42, 0.08, glass, wx, y, -d / 2 - 0.06, group);
+          box(0.6, 0.055, 0.12, trim, wx, y - 0.27, -d / 2 - 0.1, group);
+        });
+        [-d * 0.24, d * 0.24].forEach((wz) => {
+          box(0.08, 0.42, 0.44, glass, -w / 2 - 0.06, y, wz, group);
+          box(0.12, 0.055, 0.54, trim, -w / 2 - 0.1, y - 0.27, wz, group);
+          box(0.08, 0.42, 0.44, glass, w / 2 + 0.06, y, wz, group);
+          box(0.12, 0.055, 0.54, trim, w / 2 + 0.1, y - 0.27, wz, group);
+        });
+      }
+      box(w * 0.62, 0.08, 0.16, trim, 0, 0.72, -d / 2 - 0.08, group);
+      box(0.16, 0.08, d * 0.62, trim, -w / 2 - 0.08, 0.72, 0, group);
+      box(0.16, 0.08, d * 0.62, trim, w / 2 + 0.08, 0.72, 0, group);
+    }
+
+    function addTree(x, z, scale, leaf) {
+      cyl(0.13 * scale, 0.16 * scale, 1.2 * scale, mat(0x7a4e31), x, 0.42 * scale, z, 10);
+      const crown = new THREE.Group();
+      crown.position.set(x, 1.15 * scale, z);
+      scene.add(crown);
+      [[0,0,0],[0.42,0.15,0.12],[-0.38,0.1,-0.08],[0.1,0.42,-0.28],[-0.08,0.28,0.36]].forEach(([dx,dy,dz]) => {
+        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62 * scale, 1), leaf);
+        puff.position.set(dx * scale, dy * scale, dz * scale);
+        puff.castShadow = true;
+        puff.receiveShadow = true;
+        crown.add(puff);
+      });
+    }
+
+    function buildFarLowBlock(x, z, w, d, rot) {
+      const group = new THREE.Group();
+      group.position.set(x, -0.32, z);
+      group.rotation.y = rot;
+      scene.add(group);
+      box(w, 1.0, d, mat(0xb65c41), 0, 0.5, 0, group);
+      box(w + 0.2, 0.14, d + 0.2, mat(0x8f4935), 0, 1.08, 0, group);
+      for (let i = 0; i < 3; i++) box(0.55, 0.42, 0.08, mat(0xcde4dc), -w / 2 + 0.75 + i * 0.9, 0.65, d / 2 + 0.05, group);
+      for (let i = 0; i < 3; i++) box(0.55, 0.42, 0.08, mat(0xcde4dc), -w / 2 + 0.75 + i * 0.9, 0.65, -d / 2 - 0.05, group);
+      [-d * 0.24, d * 0.24].forEach((wz) => {
+        box(0.08, 0.4, 0.45, mat(0xcde4dc), -w / 2 - 0.05, 0.64, wz, group);
+        box(0.08, 0.4, 0.45, mat(0xcde4dc), w / 2 + 0.05, 0.64, wz, group);
+      });
+    }
+
+    function buildBuilding(brick, brickDark, roof, windowMat, dark, vine, red, blue, yellow) {
+      box(8.2, 7.2, 1.8, brick, -0.9, 3.45, -4.9);
+      box(8.3, 7.2, 1.5, brickDark, 3.25, 3.45, -4.08);
+      box(8.7, 0.28, 2.25, roof, -0.9, 7.2, -4.9);
+      box(8.45, 0.2, 1.9, roof, 3.25, 7.2, -4.08);
+      box(1.7, 1.9, 0.14, dark, -0.9, 0.95, -3.93);
+      box(2.4, 0.24, 1.0, mat(0x88785d), -0.9, 0.18, -3.43);
+      box(2.85, 0.22, 1.18, mat(0x71634d), -0.9, 0.45, -3.55);
+
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.45 + floor * 1.26;
+        for (let col = 0; col < 4; col++) {
+          const x = -4.0 + col * 2.05;
+          box(0.72, 0.58, 0.1, windowMat, x, y, -3.92);
+          box(0.86, 0.07, 0.14, dark, x, y - 0.34, -3.85);
+          if ((floor + col) % 2 === 0) box(0.5, 0.2, 0.28, mat(0xb7b0a0), x + 0.54, y - 0.28, -3.72);
+        }
+      }
+      for (let y = 2.22; y < 6.9; y += 1.55) {
+        const line = box(5.6, 0.035, 0.035, mat(0xf2ead5), -0.9, y, -3.76);
+        line.castShadow = false;
+        [red, blue, yellow, mat(0xf2ddb0)].forEach((m, i) => {
+          const cloth = box(0.42, 0.34, 0.035, m, -3.2 + i * 1.05, y - 0.2, -3.72);
+          cloth.castShadow = false;
+        });
+      }
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.45 + floor * 1.26;
+        for (let col = 0; col < 3; col++) {
+          const z = -4.72 + col * 0.68;
+          box(0.1, 0.56, 0.48, windowMat, 7.45, y, z);
+          box(0.14, 0.07, 0.62, dark, 7.38, y - 0.33, z);
+        }
+      }
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.45 + floor * 1.26;
+        for (let col = 0; col < 3; col++) {
+          const x = 1.15 + col * 1.78;
+          box(0.66, 0.54, 0.1, windowMat, x, y, -3.25);
+          box(0.78, 0.07, 0.14, dark, x, y - 0.32, -3.19);
+          if ((floor + col) % 2 === 1) {
+            box(0.42, 0.18, 0.24, mat(0xb7b0a0), x + 0.48, y - 0.25, -3.1);
+          }
+        }
+      }
+      rodBetween(new THREE.Vector3(6.75, 0.2, -3.15), new THREE.Vector3(6.75, 6.8, -3.15), 0.025, mat(0x5f4a38));
+      rodBetween(new THREE.Vector3(5.8, 0.2, -3.12), new THREE.Vector3(5.8, 5.9, -3.12), 0.018, mat(0x5f4a38));
+      decorateLargeBackWall(windowMat, dark);
+      for (let i = 0; i < 42; i++) cyl(0.07, 0.035, 0.075, vine, -4.55 + Math.random() * 2.2, 1.0 + Math.random() * 6.0, -3.78 + Math.random() * 0.04, 8);
+    }
+
+    function decorateLargeBackWall(windowMat, dark) {
+      const acMat = mat(0xb7b0a0);
+      const pipeMat = mat(0x5f4a38);
+      const railMat = mat(0xe9dcc2);
+      const clothes = [mat(0xcc6a48), mat(0x4e83a6), mat(0xf2ddb0), mat(0xd8a34a)];
+
+      // Rear face of the front brick slab: this is the wall that becomes blank
+      // when the camera is rotated behind the building.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.35 + floor * 1.18;
+        for (let col = 0; col < 5; col++) {
+          const x = -4.35 + col * 1.72;
+          box(0.64, 0.54, 0.1, windowMat, x, y, -5.86);
+          box(0.78, 0.07, 0.16, dark, x, y - 0.32, -5.95);
+          box(0.78, 0.05, 0.06, railMat, x, y + 0.31, -5.95);
+          if ((floor + col) % 2 === 0) {
+            box(0.44, 0.18, 0.24, acMat, x + 0.55, y - 0.23, -6.04);
+          }
+          if ((floor + col) % 4 === 1) {
+            box(0.74, 0.16, 0.2, mat(0x5c7a69), x, y - 0.42, -6.02);
+            cyl(0.08, 0.06, 0.12, mat(0x49734b), x - 0.22, y - 0.28, -6.08, 8);
+            cyl(0.07, 0.05, 0.1, mat(0x6a8f52), x + 0.2, y - 0.29, -6.08, 8);
+          }
+        }
+        const line = box(7.6, 0.035, 0.035, railMat, -1.0, y + 0.4, -6.05);
+        line.castShadow = false;
+        clothes.forEach((clothMat, i) => {
+          if ((floor + i) % 2 === 0) {
+            const cloth = box(0.3, 0.32, 0.03, clothMat, -3.75 + i * 0.92 + (floor % 2) * 0.32, y + 0.18, -6.08);
+            cloth.castShadow = false;
+          }
+        });
+      }
+      [-5.05, -2.0, 1.2, 4.55].forEach((x) => {
+        rodBetween(new THREE.Vector3(x, 0.18, -6.08), new THREE.Vector3(x, 6.85, -6.08), 0.018, pipeMat);
+      });
+
+      // The other broad visible face, previously too plain during rotation.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.35 + floor * 1.2;
+        for (let col = 0; col < 4; col++) {
+          const x = 0.1 + col * 1.75;
+          box(0.66, 0.54, 0.1, windowMat, x, y, -3.14);
+          box(0.82, 0.07, 0.15, dark, x, y - 0.32, -3.05);
+          if ((floor + col) % 2 === 1) box(0.44, 0.18, 0.24, acMat, x + 0.52, y - 0.22, -2.96);
+        }
+        box(7.2, 0.032, 0.032, railMat, 2.65, y + 0.38, -2.96).castShadow = false;
+      }
+      [0.25, 3.15, 6.25].forEach((x) => {
+        rodBetween(new THREE.Vector3(x, 0.18, -2.95), new THREE.Vector3(x, 6.85, -2.95), 0.018, pipeMat);
+      });
+
+      // Mid-depth rear-facing wall revealed by the staggered building volumes.
+      // Filling this prevents the rotated view from becoming a flat red slab.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.34 + floor * 1.2;
+        [-0.55, 0.95, 2.45].forEach((x, i) => {
+          box(0.62, 0.52, 0.1, windowMat, x, y, -4.88);
+          box(0.76, 0.07, 0.16, dark, x, y - 0.31, -4.98);
+          if ((floor + i) % 2 === 0) {
+            box(0.42, 0.18, 0.23, acMat, x + 0.5, y - 0.22, -5.05);
+          } else {
+            box(0.7, 0.16, 0.18, mat(0x5c7a69), x, y - 0.42, -5.02);
+          }
+        });
+        const line = box(3.9, 0.03, 0.03, railMat, 0.95, y + 0.38, -5.05);
+        line.castShadow = false;
+        if (floor % 2 === 0) {
+          box(0.32, 0.31, 0.03, clothes[floor % clothes.length], 0.38, y + 0.18, -5.08).castShadow = false;
+          box(0.32, 0.31, 0.03, clothes[(floor + 2) % clothes.length], 1.32, y + 0.18, -5.08).castShadow = false;
+        }
+      }
+      [-1.2, 3.15].forEach((x) => {
+        rodBetween(new THREE.Vector3(x, 0.18, -5.06), new THREE.Vector3(x, 6.85, -5.06), 0.018, pipeMat);
+      });
+
+      // A raised community notice/mural panel on the occlusion-prone mid wall.
+      // It is deliberately proud of the brick face so it does not z-fight and
+      // so low orbit angles still catch visual detail instead of an empty wall.
+      box(2.2, 1.35, 0.08, mat(0x2f796e), 1.1, 2.75, -3.86);
+      box(1.92, 1.08, 0.08, mat(0xeed9a4), 1.1, 2.75, -3.8);
+      box(1.58, 0.08, 0.09, mat(0xd28a36), 1.1, 3.08, -3.74);
+      box(1.25, 0.06, 0.09, mat(0x5c7a69), 1.1, 2.72, -3.74);
+      box(1.45, 0.06, 0.09, mat(0x8e4a3a), 1.1, 2.43, -3.74);
+      for (let i = 0; i < 18; i++) {
+        cyl(0.045, 0.025, 0.06, mat(0x5f9345), 0.05 + Math.random() * 2.1, 2.0 + Math.random() * 1.55, -3.72, 8);
+      }
+
+      // Exposed connector side of the front slab, visible from the rear orbit.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.32 + floor * 1.2;
+        [-5.48, -4.94, -4.4].forEach((z, i) => {
+          box(0.1, 0.52, 0.42, windowMat, 3.26, y, z);
+          box(0.16, 0.07, 0.56, dark, 3.35, y - 0.31, z);
+          box(0.05, 0.52, 0.045, railMat, 3.36, y, z - 0.23);
+          if ((floor + i) % 2 === 0) box(0.22, 0.16, 0.28, acMat, 3.43, y - 0.2, z + 0.28);
+        });
+        if (floor % 2 === 0) {
+          const line = rodBetween(new THREE.Vector3(3.42, y + 0.38, -5.65), new THREE.Vector3(3.42, y + 0.38, -4.18), 0.012, railMat);
+          line.castShadow = false;
+          box(0.035, 0.3, 0.28, clothes[floor % clothes.length], 3.45, y + 0.18, -4.86).castShadow = false;
+        }
+      }
+      rodBetween(new THREE.Vector3(3.48, 0.18, -5.78), new THREE.Vector3(3.48, 6.85, -5.78), 0.018, pipeMat);
+      for (let i = 0; i < 28; i++) {
+        cyl(0.045, 0.025, 0.06, mat(0x5f9345), 3.5, 0.9 + Math.random() * 5.8, -5.72 + Math.random() * 1.1, 8);
+      }
+
+      // Exposed left side of the rear slab. This broad wall is the one that
+      // dominated the low rear screenshots, so it gets its own facade rhythm.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.34 + floor * 1.2;
+        [-4.62, -4.08, -3.55].forEach((z, i) => {
+          box(0.1, 0.52, 0.42, windowMat, -0.98, y, z);
+          box(0.16, 0.07, 0.56, dark, -1.08, y - 0.31, z);
+          if ((floor + i) % 2 === 0) {
+            box(0.2, 0.16, 0.28, acMat, -1.15, y - 0.2, z - 0.27);
+          } else {
+            box(0.08, 0.15, 0.42, mat(0x5c7a69), -1.13, y - 0.38, z);
+          }
+        });
+        if (floor % 2 === 1) {
+          rodBetween(new THREE.Vector3(-1.15, y + 0.38, -4.76), new THREE.Vector3(-1.15, y + 0.38, -3.34), 0.012, railMat);
+          box(0.035, 0.3, 0.28, clothes[(floor + 1) % clothes.length], -1.18, y + 0.18, -3.92).castShadow = false;
+        }
+      }
+      rodBetween(new THREE.Vector3(-1.2, 0.18, -4.82), new THREE.Vector3(-1.2, 6.85, -4.82), 0.018, pipeMat);
+      rodBetween(new THREE.Vector3(-1.2, 0.18, -3.32), new THREE.Vector3(-1.2, 6.85, -3.32), 0.016, pipeMat);
+
+      // Add the same side-facing details just proud of the opposite side of
+      // that wall; depending on orbit angle this is the face the player sees.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.34 + floor * 1.2;
+        [-4.64, -4.1, -3.56].forEach((z, i) => {
+          box(0.1, 0.5, 0.4, windowMat, -0.78, y, z);
+          box(0.14, 0.07, 0.54, dark, -0.69, y - 0.3, z);
+          if ((floor + i) % 2 === 1) box(0.2, 0.15, 0.26, acMat, -0.62, y - 0.2, z + 0.26);
+        });
+      }
+      box(0.08, 1.6, 1.08, mat(0x2f796e), -0.66, 1.35, -4.15);
+      box(0.06, 1.35, 0.86, mat(0xeed9a4), -0.61, 1.36, -4.15);
+      [-4.9, -3.35].forEach((z) => {
+        rodBetween(new THREE.Vector3(-0.6, 0.18, z), new THREE.Vector3(-0.6, 6.85, z), 0.016, pipeMat);
+      });
+
+      // Right side facade details so the side does not read as an empty box.
+      for (let floor = 0; floor < 5; floor++) {
+        const y = 1.35 + floor * 1.2;
+        [-4.72, -4.22, -3.72].forEach((z, i) => {
+          box(0.1, 0.52, 0.42, windowMat, 7.5, y, z);
+          box(0.14, 0.07, 0.56, dark, 7.57, y - 0.31, z);
+          if ((floor + i) % 3 === 0) box(0.22, 0.16, 0.3, acMat, 7.62, y - 0.2, z + 0.28);
+        });
+      }
+      rodBetween(new THREE.Vector3(7.66, 0.22, -4.98), new THREE.Vector3(7.66, 6.8, -4.98), 0.018, pipeMat);
+    }
+
+    function addPavementLines() {
+      const lineMat = mat(0xa99772);
+      for (let x = -8; x <= 8; x += 2) box(0.03, 0.018, 12.2, lineMat, x, 0.02, 0.3).castShadow = false;
+      for (let z = -5.6; z <= 5.9; z += 2) box(16.5, 0.018, 0.03, lineMat, 0.55, 0.02, z).castShadow = false;
+    }
+
+    function buildFlowerBed(leaf) {
+      box(3.9, 0.28, 2.05, mat(0xb66d44), -5.9, 0.18, 1.42);
+      box(3.45, 0.18, 1.58, mat(0x6a4933), -5.9, 0.39, 1.42);
+      for (let i = 0; i < 20; i++) {
+        const plant = cyl(0.13, 0.07, 0.25 + Math.random() * 0.25, leaf, -7.25 + Math.random() * 2.7, 0.66, 0.78 + Math.random() * 1.25, 8);
+        plant.rotation.x = Math.random() * 0.35;
+        plant.rotation.z = Math.random() * 0.5;
+      }
+    }
+
+    function buildBikeShed(metal, blue) {
+      box(4.55, 0.18, 2.2, mat(0x6d8d86), 5.55, 1.92, 2.62);
+      box(4.75, 0.08, 2.42, mat(0x556f69), 5.55, 1.78, 2.62);
+      [[3.45, 1.65], [7.65, 1.65], [3.45, 3.55], [7.65, 3.55]].forEach(([x, z]) => cyl(0.06, 0.06, 1.76, metal, x, 0.93, z, 12));
+      box(4.2, 0.08, 0.08, metal, 5.55, 0.64, 1.58);
+      for (let i = 0; i < 4; i++) addBike(4.15 + i * 0.86, 0, 2.22 + (i % 2) * 0.36, -0.18, i % 2 ? blue : mat(0x8e4a3a));
+    }
+
+    function addBike(x, y, z, rot, frameMat = mat(0x3e6b86)) {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+      group.rotation.y = rot;
+      scene.add(group);
+
+      const tireMat = mat(0x20201f, 0.42, 0.28);
+      const rimMat = mat(0xd5c7a2, 0.62, 0.18);
+      const metal = mat(0x515b57, 0.55, 0.18);
+      const saddleMat = mat(0x2b211e, 0.5, 0.2);
+      const basketMat = mat(0xc89b57, 0.46, 0.2);
+      const wheelGeo = new THREE.TorusGeometry(0.28, 0.035, 18, 56);
+      const rimGeo = new THREE.TorusGeometry(0.225, 0.011, 12, 40);
+      const hubGeo = new THREE.CylinderGeometry(0.034, 0.034, 0.14, 16);
+      const wheelXs = [-0.55, 0.55];
+
+      wheelXs.forEach((wx) => {
+        const tire = new THREE.Mesh(wheelGeo, tireMat);
+        tire.position.set(wx, 0.32, 0);
+        tire.castShadow = true;
+        tire.receiveShadow = true;
+        group.add(tire);
+
+        const rim = new THREE.Mesh(rimGeo, rimMat);
+        rim.position.copy(tire.position);
+        rim.castShadow = true;
+        group.add(rim);
+
+        const hub = new THREE.Mesh(hubGeo, metal);
+        hub.position.copy(tire.position);
+        hub.rotation.x = Math.PI / 2;
+        hub.castShadow = true;
+        group.add(hub);
+
+        for (let i = 0; i < 12; i++) {
+          const a = i * Math.PI / 6;
+          rodBetween(
+            new THREE.Vector3(wx, 0.32, 0),
+            new THREE.Vector3(wx + Math.cos(a) * 0.21, 0.32 + Math.sin(a) * 0.21, 0),
+            0.004,
+            rimMat,
+            group
+          );
+        }
+      });
+
+      const rearHub = new THREE.Vector3(-0.55, 0.32, 0);
+      const frontHub = new THREE.Vector3(0.55, 0.32, 0);
+      const seatJoint = new THREE.Vector3(-0.18, 0.78, 0);
+      const headJoint = new THREE.Vector3(0.46, 0.76, 0);
+      const crank = new THREE.Vector3(-0.02, 0.45, 0);
+      [
+        [rearHub, seatJoint],
+        [seatJoint, headJoint],
+        [headJoint, frontHub],
+        [frontHub, crank],
+        [crank, rearHub],
+        [crank, seatJoint]
+      ].forEach(([a, b]) => rodBetween(a, b, 0.026, frameMat, group));
+
+      // Forks and stays are doubled in depth so the bike reads as a real object
+      // from both the isometric camera and low side views.
+      [-0.055, 0.055].forEach((side) => {
+        rodBetween(new THREE.Vector3(0.55, 0.32, side), new THREE.Vector3(0.48, 0.77, side), 0.012, metal, group);
+        rodBetween(new THREE.Vector3(-0.55, 0.32, side), new THREE.Vector3(-0.2, 0.76, side), 0.012, metal, group);
+        rodBetween(new THREE.Vector3(-0.55, 0.32, side), new THREE.Vector3(-0.02, 0.45, side), 0.012, metal, group);
+      });
+
+      rodBetween(new THREE.Vector3(-0.18, 0.54, 0), seatJoint, 0.018, metal, group);
+      const saddle = box(0.34, 0.055, 0.18, saddleMat, -0.24, 0.83, 0, group);
+      saddle.rotation.z = -0.08;
+
+      rodBetween(headJoint, new THREE.Vector3(0.64, 0.89, 0), 0.018, metal, group);
+      rodBetween(new THREE.Vector3(0.52, 0.9, -0.24), new THREE.Vector3(0.76, 0.9, 0.24), 0.014, metal, group);
+      cyl(0.035, 0.035, 0.12, saddleMat, 0.77, 0.9, 0.25, 12, group).rotation.x = Math.PI / 2;
+      cyl(0.035, 0.035, 0.12, saddleMat, 0.51, 0.9, -0.25, 12, group).rotation.x = Math.PI / 2;
+
+      const chainRing = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 10, 24), metal);
+      chainRing.position.set(-0.02, 0.45, -0.035);
+      chainRing.castShadow = true;
+      group.add(chainRing);
+      rodBetween(new THREE.Vector3(-0.08, 0.45, -0.055), new THREE.Vector3(0.1, 0.41, -0.055), 0.01, metal, group);
+
+      box(0.42, 0.06, 0.24, metal, -0.63, 0.61, 0, group);
+      rodBetween(new THREE.Vector3(-0.78, 0.61, -0.12), new THREE.Vector3(-0.78, 0.61, 0.12), 0.011, metal, group);
+      rodBetween(new THREE.Vector3(-0.63, 0.61, -0.12), new THREE.Vector3(-0.48, 0.53, -0.12), 0.009, metal, group);
+      rodBetween(new THREE.Vector3(-0.63, 0.61, 0.12), new THREE.Vector3(-0.48, 0.53, 0.12), 0.009, metal, group);
+
+      const basket = new THREE.Group();
+      basket.position.set(0.76, 0.62, 0);
+      group.add(basket);
+      box(0.26, 0.03, 0.24, basketMat, 0, 0.08, 0, basket);
+      box(0.03, 0.19, 0.24, basketMat, -0.13, 0, 0, basket);
+      box(0.03, 0.19, 0.24, basketMat, 0.13, 0, 0, basket);
+      box(0.26, 0.19, 0.025, basketMat, 0, 0, -0.12, basket);
+      box(0.26, 0.19, 0.025, basketMat, 0, 0, 0.12, basket);
+    }
+
+    function buildStoneTable() {
+      const stone = mat(0xa9a094);
+      cyl(0.58, 0.58, 0.16, stone, 0.65, 0.64, 2.35, 30);
+      cyl(0.16, 0.18, 0.56, stone, 0.65, 0.28, 2.35, 20);
+      [[-0.22, 1.7], [1.52, 1.72], [-0.18, 3.05], [1.48, 3.08]].forEach(([x, z]) => cyl(0.24, 0.26, 0.22, stone, x, 0.11, z, 18));
+      for (let i = 0; i < 8; i++) cyl(0.05, 0.05, 0.025, mat(i % 2 ? 0xf0e6d0 : 0x3e3028), 0.3 + Math.random() * 0.65, 0.74, 2.1 + Math.random() * 0.5, 16);
+    }
+
+    function buildOutdoorGym(metal, red, yellow) {
+      const baseX = -5.55, baseZ = 5.0;
+      cyl(0.07, 0.07, 1.55, metal, baseX, 0.78, baseZ, 16);
+      cyl(0.07, 0.07, 1.55, metal, baseX + 1.15, 0.78, baseZ, 16);
+      const bar = box(1.3, 0.08, 0.08, yellow, baseX + 0.58, 1.52, baseZ);
+      bar.rotation.z = 0.03;
+      const wheel1 = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 12, 32), yellow);
+      const wheel2 = wheel1.clone();
+      wheel1.position.set(baseX - 0.75, 0.95, baseZ + 0.25);
+      wheel2.position.set(baseX - 0.75, 0.95, baseZ - 0.35);
+      wheel1.rotation.x = Math.PI / 2;
+      wheel2.rotation.x = Math.PI / 2;
+      wheel1.castShadow = wheel2.castShadow = true;
+      scene.add(wheel1, wheel2);
+      cyl(0.05, 0.05, 1.15, metal, baseX - 0.75, 0.58, baseZ - 0.05, 12);
+      box(1.55, 0.12, 0.5, red, baseX + 2.05, 0.12, baseZ + 0.1);
+      rodBetween(new THREE.Vector3(baseX + 1.35, 0.06, baseZ - 0.24), new THREE.Vector3(baseX + 1.35, 1.05, baseZ - 0.24), 0.035, metal);
+      rodBetween(new THREE.Vector3(baseX + 2.7, 0.06, baseZ - 0.24), new THREE.Vector3(baseX + 2.7, 1.05, baseZ - 0.24), 0.035, metal);
+      rodBetween(new THREE.Vector3(baseX + 1.35, 1.05, baseZ - 0.24), new THREE.Vector3(baseX + 2.7, 1.05, baseZ - 0.24), 0.032, metal);
+    }
+
+    function buildBench() {
+      const wood = mat(0x9b5c35);
+      const metal = mat(0x5e6259, 0.58, 0.12);
+      box(2.05, 0.16, 0.42, wood, 2.35, 0.46, 4.45);
+      box(2.05, 0.14, 0.18, wood, 2.35, 0.84, 4.72);
+      [[1.55,4.25],[3.15,4.25],[1.55,4.62],[3.15,4.62]].forEach(([x,z]) => cyl(0.035, 0.04, 0.46, metal, x, 0.23, z, 10));
+    }
+
+    function buildNoticeBoard() {
+      const post = mat(0x68513a), board = mat(0x2f796e);
+      cyl(0.05, 0.05, 1.25, post, 2.55, 0.68, -2.92, 12);
+      cyl(0.05, 0.05, 1.25, post, 3.55, 0.68, -2.92, 12);
+      box(1.35, 0.78, 0.09, board, 3.05, 1.18, -2.92);
+      box(1.2, 0.08, 0.06, mat(0xead8a9), 3.05, 1.42, -2.86);
+      box(0.9, 0.06, 0.06, mat(0xead8a9), 3.05, 1.16, -2.86);
+    }
+
+    function buildLamp(x, z) {
+      const metal = mat(0x5f6257, 0.56, 0.14);
+      const warm = new THREE.MeshStandardMaterial({ color: 0xffcf6d, emissive: 0xffa332, emissiveIntensity: 1.1, roughness: 0.35 });
+      cyl(0.07, 0.09, 2.6, metal, x, 1.3, z, 14);
+      box(0.76, 0.08, 0.08, metal, x + 0.32, 2.6, z);
+      cyl(0.2, 0.28, 0.35, warm, x + 0.7, 2.38, z, 18);
+      const light = new THREE.PointLight(0xffbd66, 1.4, 7);
+      light.position.set(x + 0.7, 2.2, z);
+      scene.add(light);
+    }
+
+    function buildBikes() {
+      addBike(5.85, 0, -0.62, -0.72, mat(0x8e4a3a));
+      addBike(4.9, 0, -0.18, -0.58, mat(0x437162));
+      addBike(-7.05, 0, -1.22, 0.55, mat(0x466b8a));
+    }
+
+    function addGroundDetails() {
+      const crackMat = mat(0x86795f);
+      for (let i = 0; i < 22; i++) {
+        const crack = box(0.45 + Math.random() * 0.58, 0.014, 0.03, crackMat, -7 + Math.random() * 14, 0.035, -1.3 + Math.random() * 7);
+        crack.rotation.y = Math.random() * Math.PI;
+        crack.castShadow = false;
+      }
+      for (let i = 0; i < 15; i++) cyl(0.045, 0.035, 0.05, mat(0x7c8f54), -8 + Math.random() * 16, 0.08, -0.8 + Math.random() * 7.2, 7);
+    }
+
+    function buildPickups() {
+      [...baseItems, ...hardStoryItems].forEach((item) => {
+        const map = itemTexture(item.cell[0], item.cell[1]);
+        const material = new THREE.SpriteMaterial({ map, transparent: true, alphaTest: 0.02, depthTest: true, depthWrite: false });
+        const sprite = new THREE.Sprite(material);
+        sprite.position.set(item.pos[0], item.pos[1], item.pos[2]);
+        sprite.scale.set(item.scale, item.scale, item.scale);
+        sprite.userData.itemId = item.id;
+        sprite.userData.baseY = item.pos[1];
+        pickupGroup.add(sprite);
+        const hit = new THREE.Mesh(new THREE.SphereGeometry(item.scale * 0.5, 16, 12), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+        hit.position.copy(sprite.position);
+        hit.userData.itemId = item.id;
+        pickupGroup.add(hit);
+        const halo = new THREE.Mesh(new THREE.RingGeometry(item.scale * 0.28, item.scale * 0.38, 32), new THREE.MeshBasicMaterial({ color: 0xffd071, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false }));
+        halo.position.set(item.pos[0], Math.max(0.06, item.pos[1] - 0.35), item.pos[2]);
+        halo.rotation.x = -Math.PI / 2;
+        pickupGroup.add(halo);
+        item.sprite = sprite;
+        item.hit = hit;
+        item.halo = halo;
+        item.found = false;
+      });
+    }
+
+    function itemTexture(col, row) {
+      const texture = itemSheet.clone();
+      texture.repeat.set(0.25, 0.5);
+      texture.offset.set(col * 0.25, row === 0 ? 0.5 : 0);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function selectView(view) {
+      activeView = view;
+      viewButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+      if (gameStarted) switchView();
+      prepareRound(running);
+    }
+
+    function selectLevel(level) {
+      activeLevel = level;
+      levelButtons.forEach((button) => button.classList.toggle("active", button.dataset.level === level));
+      prepareRound(running);
+    }
+
+    function startGame() {
+      gameStarted = true;
+      startScreen.classList.add("hidden");
+      switchView();
+      resetView();
+      prepareRound(true);
+      playStartSound();
+    }
+
+    function switchView() {
+      const is3d = activeView === "3d";
+      game3d.classList.toggle("active", is3d);
+      map2d.classList.toggle("active", !is3d);
+      miniMap.classList.toggle("active", is3d);
+      tipEl.textContent = is3d ? "三维模式：拖拽旋转，滚轮缩放；右下角小地图提示大致区域。" : "二维模式：拖动地图查看小区，滚轮缩放；点击真实物件拾取。";
+      resize();
+    }
+
+    function resetGame() {
+      prepareRound(true);
+      resetView();
+      playStartSound();
+    }
+
+    function exitGame() {
+      running = false;
+      gameStarted = false;
+      overlay.classList.remove("show", "win", "lose");
+      startScreen.classList.remove("hidden");
+      map2d.classList.remove("dragging");
+      pointerDown = null;
+      mapDrag = null;
+      bgmEnabled = false;
+      stopBgm();
+      syncAudioUi();
+      prepareRound(false);
+      resetView();
+    }
+
+    function prepareRound(shouldRun) {
+      const mode = difficulty[activeLevel];
+      score = 0;
+      timeLeft = mode.time;
+      running = shouldRun;
+      missStreak = 0;
+      hintLevel = 0;
+      lastSecond = performance.now();
+      overlay.classList.remove("show", "win", "lose");
+      scoreEl.textContent = score;
+      timeEl.textContent = timeLeft;
+      currentModeEl.textContent = `${activeView === "3d" ? "三维" : "二维"} · ${mode.label} · ${mode.count} 件 · ${mode.time} 秒`;
+      activeItems = activeLevel === "hard" ? [...baseItems, ...hardStoryItems] : baseItems.slice(0, mode.count);
+      clickableObjects = [];
+      [...baseItems, ...hardStoryItems].forEach((item) => {
+        item.found = false;
+        const isActive = activeItems.includes(item);
+        if (item.sprite) item.sprite.visible = isActive && activeView === "3d";
+        if (item.hit) item.hit.visible = isActive && activeView === "3d";
+        if (item.halo) item.halo.visible = isActive && activeView === "3d";
+        if (isActive && activeView === "3d") clickableObjects.push(item.sprite, item.hit);
+      });
+      renderList();
+      renderMapItems();
+      renderMiniMap();
+      updateProgress();
+    }
+
+    function renderList() {
+      list.innerHTML = "";
+      activeItems.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = `item ${item.found ? "done" : ""}`;
+        const icon = document.createElement("div");
+        icon.className = "item-icon";
+        icon.style.backgroundPosition = bgPos(item);
+        const text = document.createElement("div");
+        const name = document.createElement("strong");
+        const hint = document.createElement("span");
+        name.textContent = item.name;
+        const hintInfo = hintTextFor(item);
+        hint.textContent = hintInfo.text;
+        hint.className = hintInfo.className;
+        text.append(name, hint);
+        li.append(icon, text);
+        list.appendChild(li);
+      });
+    }
+
+    function bgPos(item) {
+      return `${item.cell[0] * 100 / 3}% ${item.cell[1] * 100}%`;
+    }
+
+    function hintTextFor(item) {
+      if (item.found) return { text: "已找到", className: "clue" };
+      if (hintLevel >= 2) return { text: item.detail, className: "detail" };
+      if (hintLevel >= 1) return { text: item.vague, className: "clue" };
+      return { text: "先观察场景，暂不显示位置提示", className: "" };
+    }
+
+    function renderMapItems() {
+      mapItemsLayer.innerHTML = "";
+      activeItems.forEach((item) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `map-item ${item.found ? "found" : ""}`;
+        button.style.left = `${item.map[0]}%`;
+        button.style.top = `${item.map[1]}%`;
+        button.style.width = `${Math.round(46 + item.scale * 28)}px`;
+        button.style.height = `${Math.round(46 + item.scale * 28)}px`;
+        const icon = document.createElement("span");
+        icon.className = "sprite-icon";
+        icon.style.backgroundPosition = bgPos(item);
+        button.appendChild(icon);
+        button.addEventListener("pointerdown", (event) => event.stopPropagation());
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (!running || item.found || activeView !== "2d") return;
+          collect(item, event.clientX, event.clientY);
+        });
+        mapItemsLayer.appendChild(button);
+        item.mapNode = button;
+      });
+    }
+
+    function renderMiniMap() {
+      miniDots.innerHTML = "";
+      activeItems.forEach((item) => {
+        const dot = document.createElement("span");
+        dot.className = `mini-dot ${item.found ? "found" : ""}`;
+        dot.style.left = `${item.mini[0]}%`;
+        dot.style.top = `${item.mini[1]}%`;
+        miniDots.appendChild(dot);
+        item.miniNode = dot;
+      });
+    }
+
+    function updateItemViews() {
+      activeItems.forEach((item) => {
+        item.mapNode?.classList.toggle("found", item.found);
+        item.miniNode?.classList.toggle("found", item.found);
+      });
+    }
+
+    function onPointerDown(event) {
+      if (!event.isPrimary) return;
+      pointerDown = { x: event.clientX, y: event.clientY, t: performance.now() };
+    }
+
+    function onPointerUp(event) {
+      if (!running || !pointerDown || !event.isPrimary || activeView !== "3d") return;
+      const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
+      const elapsed = performance.now() - pointerDown.t;
+      pointerDown = null;
+      if (moved > 7 || elapsed > 520) return;
+      pick3d(event.clientX, event.clientY);
+    }
+
+    function onPointerMove(event) {
+      if (!running || activeView !== "3d") return;
+      renderer.domElement.style.cursor = get3dHit(event.clientX, event.clientY) ? "pointer" : "grab";
+    }
+
+    function pick3d(x, y) {
+      const hit = get3dHit(x, y);
+      if (hit) {
+        const item = activeItems.find((entry) => entry.id === hit.object.userData.itemId);
+        if (item && !item.found) return collect(item, x, y);
+      }
+      miss(x, y);
+    }
+
+    function get3dHit(x, y) {
+      pointer.x = (x / window.innerWidth) * 2 - 1;
+      pointer.y = -(y / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(clickableObjects, false).find((hit) => activeItems.some((item) => item.id === hit.object.userData.itemId && !item.found));
+    }
+
+    function onMapWheel(event) {
+      if (!gameStarted || activeView !== "2d") return;
+      event.preventDefault();
+      mapZoom = THREE.MathUtils.clamp(mapZoom + (event.deltaY < 0 ? 0.12 : -0.12), 1, 2.25);
+      clampMapPan();
+      updateMapTransform();
+    }
+
+    function onMapPointerDown(event) {
+      if (!gameStarted || activeView !== "2d" || event.target.closest(".map-item")) return;
+      mapDrag = { x: event.clientX, y: event.clientY, panX: mapPanX, panY: mapPanY };
+      map2d.classList.add("dragging");
+    }
+
+    function onMapPointerMove(event) {
+      if (!mapDrag) return;
+      mapPanX = mapDrag.panX + event.clientX - mapDrag.x;
+      mapPanY = mapDrag.panY + event.clientY - mapDrag.y;
+      clampMapPan();
+      updateMapTransform();
+    }
+
+    function onMapPointerUp(event) {
+      if (mapDrag && running && activeView === "2d") {
+        const moved = Math.hypot(event.clientX - mapDrag.x, event.clientY - mapDrag.y);
+        if (moved < 7) miss(event.clientX, event.clientY);
+      }
+      mapDrag = null;
+      map2d.classList.remove("dragging");
+    }
+
+    function collect(item, x, y) {
+      item.found = true;
+      missStreak = 0;
+      score += 20;
+      scoreEl.textContent = score;
+      if (item.sprite) item.sprite.visible = false;
+      if (item.hit) item.hit.visible = false;
+      if (item.halo) item.halo.visible = false;
+      clickableObjects = clickableObjects.filter((obj) => obj !== item.sprite && obj !== item.hit);
+      renderList();
+      updateItemViews();
+      updateProgress();
+      floatText("+20分", x, y, false);
+      playCollectSound();
+      if (activeItems.every((entry) => entry.found)) endGame(true);
+    }
+
+    function miss(x, y) {
+      missStreak += 1;
+      score = Math.max(0, score - 2);
+      scoreEl.textContent = score;
+      updateHintsAfterMiss();
+      floatText(hintLevel >= 2 ? "看清单提示~" : "再找找~", x, y, true);
+      playMissSound();
+    }
+
+    function updateHintsAfterMiss() {
+      if (missStreak >= 6 && hintLevel < 2) {
+        hintLevel = 2;
+        tipEl.textContent = "已经给出详细提示了：看左侧清单，再放大到对应区域找真实物件。";
+        renderList();
+      } else if (missStreak >= 3 && hintLevel < 1) {
+        hintLevel = 1;
+        tipEl.textContent = "给你一点线索：左侧清单现在会显示模糊方向。";
+        renderList();
+      }
+    }
+
+    function updateProgress() {
+      const found = activeItems.filter((item) => item.found).length;
+      progressEl.textContent = `${found}/${activeItems.length}`;
+    }
+
+    function floatText(text, x, y, isMiss) {
+      const node = document.createElement("div");
+      node.className = `floatText ${isMiss ? "miss" : ""}`;
+      node.textContent = text;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+      document.body.appendChild(node);
+      node.addEventListener("animationend", () => node.remove());
+    }
+
+    function ensureAudio(force = false) {
+      if (!force && !soundEnabled) return null;
+      try {
+        audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        return audioCtx;
+      } catch {
+        return null;
+      }
+    }
+
+    function beep(freq, duration, type = "sine", volume = 0.06, delay = 0) {
+      const ctx = ensureAudio();
+      if (!ctx || sfxGainValue <= 0) return;
+      const start = ctx.currentTime + delay;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.type = type;
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.exponentialRampToValueAtTime(volume * sfxGainValue, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration + 0.03);
+    }
+
+    function playStartSound() { beep(420, 0.06, "triangle", 0.035); beep(560, 0.06, "triangle", 0.035, 0.07); }
+    function playCollectSound() { beep(620, 0.08, "sine", 0.05); beep(880, 0.08, "sine", 0.045, 0.08); beep(1180, 0.1, "triangle", 0.04, 0.16); }
+    function playMissSound() { beep(210, 0.07, "square", 0.035); beep(170, 0.09, "square", 0.03, 0.08); }
+    function playEndSound(win) { (win ? [640,760,910,1220] : [420,320,220]).forEach((freq, i) => beep(freq, 0.12, "triangle", 0.04, i * 0.1)); }
+
+    async function startBgm(requestId = ++bgmRequestId) {
+      stopBgm(false);
+      bgmEnabled = true;
+      syncAudioUi();
+      const sources = ["assets/李荣浩 - 老街.mp3", "assets/laojie.mp3", "assets/bgm.mp3"];
+      const stillWanted = () => bgmEnabled && requestId === bgmRequestId;
+      for (const src of sources) {
+        if (!stillWanted()) return;
+        try {
+          const response = await fetch(src, { method: "HEAD" });
+          if (response.ok && stillWanted()) {
+            const audio = new Audio(src);
+            audio.loop = true;
+            bgmAudio = audio;
+            applyBgmVolume();
+            await audio.play();
+            if (!stillWanted()) {
+              audio.pause();
+              audio.currentTime = 0;
+              if (bgmAudio === audio) bgmAudio = null;
+            }
+            return;
+          }
+        } catch {}
+      }
+      if (stillWanted()) startAmbientBgm(requestId);
+    }
+
+    function startAmbientBgm(requestId = bgmRequestId) {
+      if (!bgmEnabled || requestId !== bgmRequestId) return;
+      const ctx = ensureAudio(true);
+      if (!ctx) return;
+      ambientGain = ctx.createGain();
+      ambientGain.gain.value = 0.045 * bgmGainValue;
+      ambientGain.connect(ctx.destination);
+      const bass = ctx.createOscillator();
+      bass.type = "sine";
+      bass.frequency.value = 110;
+      bass.connect(ambientGain);
+      bass.start();
+      const pad = ctx.createOscillator();
+      pad.type = "triangle";
+      pad.frequency.value = 220;
+      pad.connect(ambientGain);
+      pad.start();
+      const notes = [330, 392, 440, 392, 330, 294, 330, 247];
+      let step = 0;
+      ambientTimer = setInterval(() => {
+        if (!bgmEnabled || requestId !== bgmRequestId) return;
+        const was = soundEnabled;
+        soundEnabled = true;
+        beep(notes[step % notes.length], 0.22, "triangle", 0.02 * bgmGainValue);
+        soundEnabled = was;
+        step += 1;
+      }, 680);
+      ambientGain._oscillators = [bass, pad];
+    }
+
+    function stopBgm(invalidate = true) {
+      if (invalidate) bgmRequestId += 1;
+      if (bgmAudio) {
+        bgmAudio.pause();
+        bgmAudio.currentTime = 0;
+        bgmAudio = null;
+      }
+      if (ambientTimer) clearInterval(ambientTimer);
+      ambientTimer = null;
+      if (ambientGain) {
+        ambientGain._oscillators?.forEach((osc) => osc.stop());
+        ambientGain.disconnect();
+        ambientGain = null;
+      }
+    }
+
+    function applyBgmVolume() {
+      if (bgmAudio) bgmAudio.volume = bgmGainValue;
+      if (ambientGain) ambientGain.gain.value = 0.045 * bgmGainValue;
+    }
+
+    function syncAudioUi() {
+      soundToggle.textContent = soundEnabled ? "音效开" : "音效关";
+      soundToggle.classList.toggle("on", soundEnabled);
+      soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+      bgmToggle.textContent = bgmEnabled ? "BGM开" : "BGM关";
+      bgmToggle.classList.toggle("on", bgmEnabled);
+      bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
+      sfxValue.textContent = `${Math.round(sfxGainValue * 100)}%`;
+      bgmValue.textContent = `${Math.round(bgmGainValue * 100)}%`;
+    }
+
+    function animate(now = performance.now()) {
+      requestAnimationFrame(animate);
+      controls.update();
+      if (running && now - lastSecond >= 1000) {
+        const steps = Math.floor((now - lastSecond) / 1000);
+        lastSecond += steps * 1000;
+        timeLeft = Math.max(0, timeLeft - steps);
+        timeEl.textContent = timeLeft;
+        if (timeLeft === 0) endGame(false);
+      }
+      activeItems.forEach((item, index) => {
+        if (!item.sprite || !item.sprite.visible) return;
+        const bob = Math.sin(now * 0.003 + index * 0.9) * 0.018;
+        item.sprite.position.y = item.sprite.userData.baseY + bob;
+        item.hit.position.copy(item.sprite.position);
+        item.halo.material.opacity = 0.16 + Math.sin(now * 0.004 + index) * 0.06;
+      });
+      renderer.render(scene, camera);
+    }
+
+    function endGame(win) {
+      running = false;
+      playEndSound(win);
+      overlay.classList.toggle("win", win);
+      overlay.classList.toggle("lose", !win);
+      overlay.classList.add("show");
+      const found = activeItems.filter((item) => item.found).length;
+      resultTitle.textContent = win ? "社区小帮手" : "时间到";
+      resultText.textContent = win
+        ? `你找齐了 ${found} 件物品，最终得分 ${score} 分。邻居们都放心啦。`
+        : `你找到了 ${found}/${activeItems.length} 件物品，最终得分 ${score} 分。换个角度再找找会更快。`;
+      resultStats.innerHTML = `
+        <span><strong>${found}/${activeItems.length}</strong>找到物品</span>
+        <span><strong>${score}</strong>本局得分</span>
+        <span><strong>${timeLeft}</strong>剩余秒数</span>
+      `;
+    }
+
+    function resetView() {
+      if (activeView === "3d") {
+        if (quickParams.get("angle") === "back") {
+          camera.position.set(10.5, 8.7, -14.5);
+        } else {
+          camera.position.set(-11.5, 12.2, 14.4);
+        }
+        controls.target.set(-0.4, 1.2, 0.25);
+        camera.zoom = 1;
+        camera.updateProjectionMatrix();
+        controls.update();
+      } else {
+        mapZoom = 1;
+        mapPanX = 0;
+        mapPanY = 0;
+        updateMapTransform();
+      }
+    }
+
+    function clampMapPan() {
+      const maxX = window.innerWidth * (mapZoom - 1) * 0.5 + 180;
+      const maxY = window.innerHeight * (mapZoom - 1) * 0.5 + 120;
+      mapPanX = THREE.MathUtils.clamp(mapPanX, -maxX, maxX);
+      mapPanY = THREE.MathUtils.clamp(mapPanY, -maxY, maxY);
+    }
+
+    function updateMapTransform() {
+      mapStage.style.transform = `translate(${mapPanX}px, ${mapPanY}px) scale(${mapZoom})`;
+    }
+
+    function resizeMapStage() {
+      const viewportRatio = window.innerWidth / window.innerHeight;
+      const imageRatio = 16 / 9;
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+      if (viewportRatio > imageRatio) height = width / imageRatio;
+      else width = height * imageRatio;
+      mapStage.style.width = `${width}px`;
+      mapStage.style.height = `${height}px`;
+      mapStage.style.left = `${(window.innerWidth - width) / 2}px`;
+      mapStage.style.top = `${(window.innerHeight - height) / 2}px`;
+      clampMapPan();
+      updateMapTransform();
+    }
+
+    function resize() {
+      resizeMapStage();
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewHeight = window.innerWidth < 780 ? 15.8 : 14.6;
+      const viewWidth = viewHeight * aspect;
+      camera.left = -viewWidth / 2;
+      camera.right = viewWidth / 2;
+      camera.top = viewHeight / 2;
+      camera.bottom = -viewHeight / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  </script>
+</body>
+</html>
